@@ -44,16 +44,16 @@ class Request(FuzzableBlock, Node):
             block_stack = list()
 
         for item in child_nodes:
-            item.context_path = self._generate_context_path(block_stack)
+            item.context_path = self._generate_context_path(block_stack) 
             item.request = self
             # ensure the name doesn't already exist.
             if item.qualified_name in list(self.names):
                 raise exception.SullyRuntimeError("BLOCK NAME ALREADY EXISTS: %s" % item.qualified_name)
-            self.names[item.qualified_name] = item
+            self.names[item.qualified_name] = item # 这个过程将item加入到self.names的映射中，递归处理时，将加入所有的Block及Block中的Block或primitive对象
 
-            if len(block_stack) == 0:
-                self.stack.append(item)
-            if isinstance(item, FuzzableBlock):
+            if len(block_stack) == 0: # 如果block_stack len为0(默认)，则将item(一般是Block)加入到stack中；如果进行了递归，则block_stack则不为0
+                self.stack.append(item) # 将request下的所有顶层item加入到stack
+            if isinstance(item, FuzzableBlock):# 如果是fuzzableBlock则进入下面
                 block_stack.append(item)
                 self._initialize_children(child_nodes=item.stack, block_stack=block_stack)
                 block_stack.pop()
@@ -116,7 +116,7 @@ class Request(FuzzableBlock, Node):
         if isinstance(item, FuzzableBlock):
             self.block_stack.append(item)
 
-    def _generate_context_path(self, block_stack):
+    def _generate_context_path(self, block_stack): # 目前看就是当前的name拼接上所有block_stack中元素的name
         context_path = ".".join(x.name for x in block_stack)  # TODO put in method
         context_path = ".".join(filter(None, (self.name, context_path)))
         return context_path
@@ -125,7 +125,7 @@ class Request(FuzzableBlock, Node):
         if self.block_stack:
             raise exception.SullyRuntimeError("UNCLOSED BLOCK: %s" % self.block_stack[-1].qualified_name)
 
-        return self.get_child_data(mutation_context=mutation_context)
+        return self.get_child_data(mutation_context=mutation_context) # 渲染数据时调用get_child_data
 
     def walk(self, stack=None):
         """
@@ -200,7 +200,7 @@ class Request(FuzzableBlock, Node):
         else:
             raise BoofuzzNameResolutionError(ERR_NAME_NOT_FOUND.format(resolved_name))
 
-    def get_mutations(self, default_value=None, skip_elements=None):
+    def get_mutations(self, default_value=None, skip_elements=None): # 得到的是一个迭代器
         return self.mutations(default_value=default_value, skip_elements=skip_elements)
 
     def get_num_mutations(self):

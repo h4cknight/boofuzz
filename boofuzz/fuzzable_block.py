@@ -39,10 +39,10 @@ class FuzzableBlock(Fuzzable):
         if skip_elements is None:
             skip_elements = []
         for item in self.stack:
-            if item.qualified_name in skip_elements:
+            if item.qualified_name in skip_elements:# 如果是在跳过列表中，则进行跳过
                 continue
             self.request.mutant = item
-            for mutation in item.get_mutations():
+            for mutation in item.get_mutations():# 依次访问stack中的item，对每一个item的变异进行返回;
                 yield mutation
 
     def num_mutations(self, default_value=None):
@@ -53,8 +53,9 @@ class FuzzableBlock(Fuzzable):
                 num_mutations += item.get_num_mutations()
 
         return num_mutations
-
-    def get_child_data(self, mutation_context):
+    # 将self.stack中的数据分别调用render进行渲染拼接(Request的render基本就是直接调用get_child_data)
+    # Block继承自FuzzableBlock，也就是同样的
+    def get_child_data(self, mutation_context): 
         """Get child or referenced data for this node.
 
         For blocks that reference other data from the message structure (e.g. size, checksum, blocks). See

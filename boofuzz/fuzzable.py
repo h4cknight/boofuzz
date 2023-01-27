@@ -105,7 +105,7 @@ class Fuzzable:
         """
         self._halt_mutations = True
 
-    def original_value(self, test_case_context=None):
+    def original_value(self, test_case_context=None): # 从注释来看，是一开始未变异的值
         """Original, non-mutated value of element.
 
         Args:
@@ -121,7 +121,7 @@ class Fuzzable:
         else:
             return self._default_value
 
-    def get_mutations(self):
+    def get_mutations(self):# 比如String的get_mutations就是这个，FuzzableBlock使用的get_mutations也是这个，Block继承FuzzableBlock，也是使用的这个
         """Iterate mutations. Used by boofuzz framework.
 
         Yields:
@@ -132,7 +132,7 @@ class Fuzzable:
             if not self.fuzzable:
                 return
             index = 0
-            for value in itertools.chain(self.mutations(self.original_value()), self._fuzz_values):
+            for value in itertools.chain(self.mutations(self.original_value()), self._fuzz_values):# 将self.mutations（每个类不一样）和_fuzz_values拼接起来遍历
                 if self._halt_mutations:
                     self._halt_mutations = False
                     return
@@ -145,7 +145,7 @@ class Fuzzable:
                     index += 1
         finally:
             self._halt_mutations = False  # in case stop_mutations is called when mutations were exhausted anyway
-
+    # 默认encode直接返回value;get_value依据mutaion_context进行返回，可能是original_value，也可能是mutation_context中的变异值(依据qualified_name查找)
     def render(self, mutation_context=None):
         """Render after applying mutation, if applicable.
         :type mutation_context: MutationContext
@@ -168,14 +168,14 @@ class Fuzzable:
         """
         if mutation_context is None:
             mutation_context = MutationContext()
-        if self.qualified_name in mutation_context.mutations:
+        if self.qualified_name in mutation_context.mutations:# 名称在变异上下文中
             mutation = mutation_context.mutations[self.qualified_name]
-            if callable(mutation.value):
+            if callable(mutation.value): # 如果是可调用的对象，则对原始值进行变异
                 value = mutation.value(self.original_value(test_case_context=mutation_context.protocol_session))
             else:
-                value = mutation.value
+                value = mutation.value # 如果不是可调用对象，直接返回值
         else:
-            value = self.original_value(test_case_context=mutation_context.protocol_session)
+            value = self.original_value(test_case_context=mutation_context.protocol_session) # 不属于变异上下文则保持原始值
 
         return value
 

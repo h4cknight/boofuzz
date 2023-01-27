@@ -61,11 +61,11 @@ class Block(FuzzableBlock):
         self._mutant_index = 0  # current mutation index.
 
     def mutations(self, default_value, skip_elements=None):
-        for item in self.stack:
+        for item in self.stack:# 先基于stack变异
             self.request.mutant = item
             for mutations in item.get_mutations():
                 yield mutations
-        if self.group is not None:
+        if self.group is not None: # group存在的话，返回group和item的mutations的组合
             group = self.request.resolve_name(self.context_path, self.group)
             for group_mutations in group.get_mutations():
                 for item in self.stack:
@@ -80,7 +80,7 @@ class Block(FuzzableBlock):
         return n
 
     def _do_dependencies_allow_render(self, mutation_context):
-        if self.dep:
+        if self.dep: # 默认应该是None，进入后面返回true
             dependent_value = self.request.resolve_name(self.context_path, self.dep).get_value(mutation_context)
             if self.dep_compare == "==":
                 if self.dep_values and dependent_value not in self.dep_values:
@@ -109,7 +109,7 @@ class Block(FuzzableBlock):
 
     def encode(self, value, mutation_context):
         if self._do_dependencies_allow_render(mutation_context=mutation_context):
-            child_data = super(Block, self).get_child_data(mutation_context=mutation_context)
+            child_data = super(Block, self).get_child_data(mutation_context=mutation_context) # block应该是没有重写render（request就重写了render），而是间接通过encode实现获取child_data
         else:
             child_data = b""
         if self.encoder:

@@ -87,7 +87,7 @@ def SocketConnection(
     if proto in _PROTOCOLS_PORT_REQUIRED and port is None:
         raise ValueError("__init__() argument port required for protocol {0}".format(proto))
 
-    if proto == "udp":
+    if proto == "udp": # 依据不同的协议创建不同的连接
         return udp_socket_connection.UDPSocketConnection(
             host, port, send_timeout, recv_timeout, server, bind, udp_broadcast
         )

@@ -363,7 +363,7 @@ class WebApp:
         """Called by fuzz() to initialize variables, web interface, etc."""
         if not self._web_interface_thread.is_alive():
             # spawn the web interface.
-            self._web_interface_thread.start()
+            self._web_interface_thread.start() 
 
 
 def open_test_run(db_filename, port=constants.DEFAULT_WEB_UI_PORT, address=constants.DEFAULT_WEB_UI_ADDRESS):
@@ -607,7 +607,7 @@ class Session(pgraph.Graph):
         """
 
         node.number = len(self.nodes)
-        node.id = len(self.nodes)
+        node.id = len(self.nodes) # 仅仅使用len
 
         if node.id not in self.nodes:
             self.nodes[node.id] = node
@@ -659,7 +659,7 @@ class Session(pgraph.Graph):
             pgraph.Edge: The edge between the src and dst.
         """
         # if only a source was provided, then make it the destination and set the source to the root node.
-        if dst is None:
+        if dst is None:# 如果没有dst，就连接到root
             dst = src
             src = self.root
 
@@ -678,7 +678,7 @@ class Session(pgraph.Graph):
             self.add_node(dst)
 
         # create an edge between the two nodes and add it to the graph.
-        edge = Connection(src.id, dst.id, callback)
+        edge = Connection(src.id, dst.id, callback) # 依据两个节点id创建一条边
         self.add_edge(edge)
 
         return edge
@@ -727,7 +727,7 @@ class Session(pgraph.Graph):
     def _start_target(self, target):
         started = False
         for monitor in target.monitors:
-            if monitor.start_target():
+            if monitor.start_target(): # 调用monitor的start_target方法，并随后调用monitor.post_start_target
                 started = True
                 break
         if started:
@@ -1073,7 +1073,7 @@ class Session(pgraph.Graph):
         if self.web_port is not None:
             if not self.web_interface_thread.is_alive():
                 # spawn the web interface.
-                self.web_interface_thread.start()
+                self.web_interface_thread.start() # 就是在 localhost:26000 看到的那个可视化界面
 
     def _callback_current_node(self, node, edge, test_case_context):
         """Execute callback preceding current node.
@@ -1113,10 +1113,10 @@ class Session(pgraph.Graph):
             mutation_context (MutationContext): active mutation context
         """
         if callback_data:
-            data = callback_data
+            data = callback_data # callback返回的callback_data存在
         else:
-            data = node.render(mutation_context=mutation_context)
-
+            data = node.render(mutation_context=mutation_context) # 使用下一个要进行Request的节点依据mutation_context进行渲染得到要发送的数据
+        # 后面先发送数据，再接收数据
         try:  # send
             self.targets[0].send(data)
             self.last_send = data
@@ -1278,11 +1278,11 @@ class Session(pgraph.Graph):
         self.total_num_mutations = self.num_mutations(max_depth=max_depth)
 
         if name is None or name == "":
-            self._main_fuzz_loop(self._generate_mutations_indefinitely(max_depth=max_depth))
+            self._main_fuzz_loop(self._generate_mutations_indefinitely(max_depth=max_depth))# 主要的fuzz逻辑
         else:
             self.fuzz_by_name(name=name)
 
-    def fuzz_by_name(self, name):
+    def fuzz_by_name(self, name):# 没有细看，从注释来看像是针对可以对某个节点进行fuzz，而不必整个图进行fuzz
         """Fuzz a particular test case or node by name.
 
         Args:
@@ -1379,20 +1379,20 @@ class Session(pgraph.Graph):
         Returns:
             None
         """
-        self.server_init()
+        self.server_init() # 初始化web 26000服务
 
         try:
-            self._start_target(self.targets[0])
+            self._start_target(self.targets[0]) # 调用monitor的start_target方法，并随后调用monitor.post_start_target 方法
 
             if self._reuse_target_connection:
                 self.targets[0].open()
             self.num_cases_actually_fuzzed = 0
             self.start_time = time.time()
             for mutation_context in fuzz_case_iterator:
-                if self.total_mutant_index < self._index_start:
+                if self.total_mutant_index < self._index_start: # 目前来看，boofuzz属于生成式变异，如果所有变异步骤都确定，那么_index_start应该有从断开位置开始从新fuzz的作用
                     continue
 
-                # Check restart interval
+                # Check restart interval 可以控制重启目标服务
                 if (
                     self.num_cases_actually_fuzzed
                     and self.restart_interval
@@ -1401,7 +1401,7 @@ class Session(pgraph.Graph):
                     self._fuzz_data_logger.open_test_step("restart interval of %d reached" % self.restart_interval)
                     self._restart_target(self.targets[0])
 
-                self._fuzz_current_case(mutation_context)
+                self._fuzz_current_case(mutation_context) # 基于mutation_context进行fuzz
 
                 self.num_cases_actually_fuzzed += 1
 
@@ -1448,24 +1448,26 @@ class Session(pgraph.Graph):
                 break
             fuzz_index += 1
 
-    def _generate_mutations_indefinitely(self, max_depth=None, path=None):
+    def _generate_mutations_indefinitely(self, max_depth=None, path=None):#从fuzz()进入的时候max_depth/path都为None
         """Yield MutationContext with n mutations per message over all messages, with n increasing indefinitely."""
         depth = 1
         while max_depth is None or depth <= max_depth:
             valid_case_found_at_this_depth = False
-            for m in self._generate_n_mutations(depth=depth, path=path):
+            for m in self._generate_n_mutations(depth=depth, path=path):#每次depth从1开始增加，path都为None；depth就是n
                 valid_case_found_at_this_depth = True
-                yield m
+                yield m # 返回一个迭代器，该迭代器会深度优先搜索所有边，针对每个depth,变异depth次,将path和变异的结果封装成MutationContext进行迭代返回
             if not valid_case_found_at_this_depth:
                 break
             depth += 1
 
     def _generate_n_mutations(self, depth, path):
         """Yield MutationContext with n mutations per message over all messages."""
-        for path in self._iterate_protocol_message_paths(path=path):
-            for m in self._generate_n_mutations_for_path(path, depth=depth):
-                yield m
+        for path in self._iterate_protocol_message_paths(path=path): # 返回深度优先搜索遍历的所有边
+            for m in self._generate_n_mutations_for_path(path, depth=depth):# 针对每条path，进行depth次变异
+                yield m # 返回MutationContext
 
+    # 基于path从叶子节点往前depth个节点进行变异，每个Request节点单独变异，然后形成笛卡尔积；返回的迭代器基于这个笛卡尔积，返回MutationContext
+    # 每个MutationContext包含path及相关的变异节点信息
     def _generate_n_mutations_for_path(self, path, depth):
         """Yield MutationContext with n mutations for a specific message.
 
@@ -1479,21 +1481,21 @@ class Session(pgraph.Graph):
         for mutations in self._generate_n_mutations_for_path_recursive(path, depth=depth):
             if not self._mutations_contain_duplicate(mutations):
                 self.total_mutant_index += 1
-                yield MutationContext(message_path=path, mutations={n.qualified_name: n for n in mutations})
+                yield MutationContext(message_path=path, mutations={n.qualified_name: n for n in mutations})# 记录了路径信息(顺序)和变异信息（iter转dict）
 
-    def _generate_n_mutations_for_path_recursive(self, path, depth, skip_elements=None):
+    def _generate_n_mutations_for_path_recursive(self, path, depth, skip_elements=None):# 从叶子节点往前变异，最多depth个节点变异，目前来看总数为笛卡尔积
         if skip_elements is None:
             skip_elements = set()
         if depth == 0:
             yield []
             return
-        new_skip = skip_elements.copy()
-        for mutations in self._generate_mutations_for_request(path=path, skip_elements=skip_elements):
-            new_skip.update(m.qualified_name for m in mutations)
-            for ms in self._generate_n_mutations_for_path_recursive(path, depth=depth - 1, skip_elements=new_skip):
-                yield mutations + ms
+        new_skip = skip_elements.copy() # 第一次默认为空
+        for mutations in self._generate_mutations_for_request(path=path, skip_elements=skip_elements):# 对于path中最后一个节点进行变异
+            new_skip.update(m.qualified_name for m in mutations) # 使用mutation的qualified_name进行集合的union操作
+            for ms in self._generate_n_mutations_for_path_recursive(path, depth=depth - 1, skip_elements=new_skip):# depth-1,再次递归变异倒数第二个节点
+                yield mutations + ms # 返回的是从叶子节点往前的变异序列迭代器，从叶子节点往前深度最多depth（后续使用中iter转dict，说明顺序不重要）
 
-    def _iterate_protocol_message_paths(self, path=None):
+    def _iterate_protocol_message_paths(self, path=None):# 返回按深度优先搜索的所有path
         """
         Iterates over protocol and yields a path (list of Connection) leading to a given message).
 
@@ -1513,10 +1515,10 @@ class Session(pgraph.Graph):
         if not self.edges_from(self.root.id):
             raise exception.SullyRuntimeError("No requests specified in session")
 
-        if path is not None:
+        if path is not None:#path不为空直接返回path
             yield path
         else:
-            for x in self._iterate_protocol_message_paths_recursive(this_node=self.root, path=[]):
+            for x in self._iterate_protocol_message_paths_recursive(this_node=self.root, path=[]):# 从root节点开始按深度优先搜索返回path
                 yield x
 
     def _iterate_protocol_message_paths_recursive(self, this_node, path):
@@ -1540,10 +1542,10 @@ class Session(pgraph.Graph):
             logging.debug("fuzzing: {0}".format(message_path))
             self.fuzz_node = self.nodes[path[-1].dst]
 
-            yield path
+            yield path # 表示path路径可以不必完整走到叶子节点，就能提前返回
 
             # recursively fuzz the remainder of the nodes in the session graph.
-            for x in self._iterate_protocol_message_paths_recursive(self.fuzz_node, path):
+            for x in self._iterate_protocol_message_paths_recursive(self.fuzz_node, path):#递归方式终究会走到叶子节点
                 yield x
 
         # finished with the last node on the path, pop it off the path stack.
@@ -1557,7 +1559,7 @@ class Session(pgraph.Graph):
                 return True
         return False
 
-    def _generate_mutations_for_request(self, path, skip_elements=None):
+    def _generate_mutations_for_request(self, path, skip_elements=None):# 对于path中的最后一个Request节点进行变异的迭代器
         """Yield each mutation for a specific message (the last message in path).
 
         Args:
@@ -1569,17 +1571,18 @@ class Session(pgraph.Graph):
         """
         if skip_elements is None:
             skip_elements = []
-        self.fuzz_node = self.nodes[path[-1].dst]
+        self.fuzz_node = self.nodes[path[-1].dst] # 仅针对最后一个节点进行变异
         self.mutant_index = 0
-
+        # fuzz_node一般是Request;mutaions最终应该是一次请求中的某个primitive的变异，mutation包含qualified_name，在render时会被使用构建变异数据
+        # 由于在上层函数中最终形成了笛卡尔积的效果，从而能够覆盖所有的组合，只不过由于笛卡尔积的原因，变异的数量比较大，而且基于网络，速度会较慢
         for mutations in self.fuzz_node.get_mutations(skip_elements=skip_elements):
             self.mutant_index += 1
             yield mutations
 
-            if self._skip_current_node_after_current_test_case:
+            if self._skip_current_node_after_current_test_case:# 像是停止所有的变异
                 self._skip_current_node_after_current_test_case = False
                 break
-            elif self._skip_current_element_after_current_test_case:
+            elif self._skip_current_element_after_current_test_case: # 像是停止当前节点的变异
                 self.fuzz_node.mutant.stop_mutations()
                 self._skip_current_element_after_current_test_case = False
                 continue
@@ -1711,9 +1714,9 @@ class Session(pgraph.Graph):
         """
         target = self.targets[0]
 
-        self._pause_if_pause_flag_is_set()
+        self._pause_if_pause_flag_is_set() # 依据特定变量状态决定是否暂停fuzz
 
-        test_case_name = self._test_case_name(mutation_context)
+        test_case_name = self._test_case_name(mutation_context) # 依据context构造“长”test_case_name
         self.current_test_case_name = test_case_name
 
         self._fuzz_data_logger.open_test_case(
@@ -1742,7 +1745,7 @@ class Session(pgraph.Graph):
 
         try:
             self._open_connection_keep_trying(target)
-
+            # 主要是 monitor.pre_send 进行调用
             self._pre_send(target)
 
             for e in mutation_context.message_path[:-1]:
@@ -1753,9 +1756,9 @@ class Session(pgraph.Graph):
                     current_message=node,
                 )
                 mutation_context.protocol_session = protocol_session
-                callback_data = self._callback_current_node(node=node, edge=e, test_case_context=protocol_session)
+                callback_data = self._callback_current_node(node=node, edge=e, test_case_context=protocol_session) # 调用edge上的callback
                 self._fuzz_data_logger.open_test_step("Transmit Prep Node '{0}'".format(node.name))
-                self.transmit_normal(target, node, e, callback_data=callback_data, mutation_context=mutation_context)
+                self.transmit_normal(target, node, e, callback_data=callback_data, mutation_context=mutation_context) # 发送node的“变异”数据
 
             prev_node = self.nodes[mutation_context.message_path[-1].src]
             node = self.nodes[mutation_context.message_path[-1].dst]
@@ -1774,9 +1777,9 @@ class Session(pgraph.Graph):
                 mutation_context.message_path[-1],
                 callback_data=callback_data,
                 mutation_context=mutation_context,
-            )
+            ) # 感觉和transmit_normal没什么区别
 
-            self._check_for_passively_detected_failures(target=target)
+            self._check_for_passively_detected_failures(target=target)# 通过monitor获取crash信息
             if not self._reuse_target_connection:
                 target.close()
 
@@ -1797,24 +1800,24 @@ class Session(pgraph.Graph):
         Args:
             target (Target): Target to open.
         """
-        if not self._reuse_target_connection:
+        if not self._reuse_target_connection: # 如果不重新利用目标连接，将会进行target.open()
             out_of_available_sockets_count = 0
             unable_to_connect_count = 0
             initial_time = time.time()
 
-            while True:
+            while True:# 失败的化重复尝试open 进行connect连接
                 try:
                     target.open()
                     break  # break if no exception
                 except exception.BoofuzzTargetConnectionFailedError:
-                    if self.restart_threshold and unable_to_connect_count >= self.restart_threshold:
+                    if self.restart_threshold and unable_to_connect_count >= self.restart_threshold:  # 重启阈值限制
                         self._fuzz_data_logger.log_info(
                             "Unable to reconnect to target: Reached threshold of {0} retries. Ending fuzzing.".format(
                                 self.restart_threshold
                             )
                         )
                         raise
-                    elif self.restart_timeout and time.time() >= initial_time + self.restart_timeout:
+                    elif self.restart_timeout and time.time() >= initial_time + self.restart_timeout: # 超时抛出异常
                         self._fuzz_data_logger.log_info(
                             "Unable to reconnect to target: Reached restart timeout of {0}s. Ending fuzzing.".format(
                                 self.restart_timeout
