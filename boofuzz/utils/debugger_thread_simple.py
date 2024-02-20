@@ -225,6 +225,11 @@ class DebuggerThreadSimple(threading.Thread):
         Returns:
             bool: True if the target is still active, False otherwise.
         """
+        print("is alive ", str(self.is_alive()))
+        time.sleep(2)
+        print("is alive after sleep ", str(self.is_alive()))
+        # exist is alive  True -> time.sleep(2) -> is alive after sleep  False 
+        # so try always sleep 2s, maybe 4s or more? to make is_alive() be final state
         if self.is_alive():
             return True
         else:
