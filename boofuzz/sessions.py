@@ -255,7 +255,7 @@ class Connection(pgraph.Edge):
 
         self.callback = callback
 
-
+f
 class SessionInfo:
     def __init__(self, db_filename):
         self._db_reader = fuzz_logger_db.FuzzLoggerDbReader(db_filename=db_filename)
@@ -777,9 +777,9 @@ class Session(pgraph.Graph):
         """
         if max_depth is None or max_depth > 1:
             self.total_num_mutations = None
-            return self.total_num_mutations
+            return self.total_num_mutations # 当max_depth为None或者大于1时，返回None 并表示不受到限制，因为组合Fuzz的话数量会很大
 
-        return self._num_mutations_recursive()
+        return self._num_mutations_recursive() # 进入这通常表示max_depth为1，才会进行统计num_mutations，递归统计； 也不知道这里为啥要叫max_depth...
 
     def _num_mutations_recursive(self, this_node=None, path=None):
         """Helper for num_mutations.
@@ -799,20 +799,23 @@ class Session(pgraph.Graph):
         if path is None:
             path = []
 
-        for edge in self.edges_from(this_node.id):
-            next_node = self.nodes[edge.dst]
-            self.total_num_mutations += next_node.get_num_mutations()
+        # 这里的递归和统计方法，可以看到基本每条边都统计一次，基本算是和边的数量成正比，是一个累加的关系
+        # 和预想的笛卡尔积的组合方式有区别； 目前理解来看应该只是变异次数是这样算的，确实就算笛卡尔积来看，具体的变异总次数就这么多
+        # 只不过组合后的总数量应该还是笛卡尔积
+        for edge in self.edges_from(this_node.id): # edge时从this_node.id出去的边
+            next_node = self.nodes[edge.dst] # 下一个节点
+            self.total_num_mutations += next_node.get_num_mutations() # 累加下一个节点的num_mutations
 
-            if edge.src != self.root.id:
+            if edge.src != self.root.id: # path表示一个运行中的路径上下文
                 path.append(edge)
 
-            self._num_mutations_recursive(next_node, path)
+            self._num_mutations_recursive(next_node, path) # 递归计算从next_node的出边进行统计num_mutations
 
         # finished with the last node on the path, pop it off the path stack.
         if path:
-            path.pop()
+            path.pop() # 维护路径上下文
 
-        return self.total_num_mutations
+        return self.total_num_mutations # 返回总统计数量
 
     def _pause_if_pause_flag_is_set(self):
         """
@@ -1115,7 +1118,7 @@ class Session(pgraph.Graph):
         if callback_data:
             data = callback_data # callback返回的callback_data存在
         else:
-            data = node.render(mutation_context=mutation_context) # 使用下一个要进行Request的节点依据mutation_context进行渲染得到要发送的数据
+            data = node.render(mutation_context=mutation_context) # 使用node Request的节点依据mutation_context进行渲染得到要发送的数据;  mutation_context从代码看理论一般只有最后一个request的变异数据，之前的node request 应该在渲染时使用的是默认数据
         # 后面先发送数据，再接收数据
         try:  # send
             self.targets[0].send(data)
@@ -1275,10 +1278,12 @@ class Session(pgraph.Graph):
             None
         """
         self.total_mutant_index = 0
-        self.total_num_mutations = self.num_mutations(max_depth=max_depth)
+        self.total_num_mutations = self.num_mutations(max_depth=max_depth) # 默认max_depth默认为None，那么这里返回也默认为None；只有max_depth为1，才会进行递归统计
 
         if name is None or name == "":
-            self._main_fuzz_loop(self._generate_mutations_indefinitely(max_depth=max_depth))# 主要的fuzz逻辑
+            # 通常fuzz时，这里的name是None
+            # _generate_mutations_indefinitely 
+            self._main_fuzz_loop(self._generate_mutations_indefinitely(max_depth=max_depth))
         else:
             self.fuzz_by_name(name=name)
 
@@ -1435,7 +1440,7 @@ class Session(pgraph.Graph):
         except Exception:
             self._fuzz_data_logger.log_error("Unexpected exception! {0}".format(traceback.format_exc()))
             self.export_file()
-            raise
+            raise   
         finally:
             self._fuzz_data_logger.close_test()
 
@@ -1448,25 +1453,29 @@ class Session(pgraph.Graph):
                 break
             fuzz_index += 1
 
-    def _generate_mutations_indefinitely(self, max_depth=None, path=None):#从fuzz()进入的时候max_depth/path都为None
+    # 这是一个迭代器  indefinitely 是无限的，不确定的含义
+    # 该迭代器返回MutationContext(message_path=path, mutations={n.qualified_name: n for n in mutations})
+    # 每个request都对应一个（多个）MutationContext，因为一个request，其message_path可能不一样（多条路径到达request），mutaions在depth相同时应该相同
+    def _generate_mutations_indefinitely(self, max_depth=None, path=None):#从fuzz()进入的时候默认 max_depth/path都为None
         """Yield MutationContext with n mutations per message over all messages, with n increasing indefinitely."""
         depth = 1
         while max_depth is None or depth <= max_depth:
             valid_case_found_at_this_depth = False
-            for m in self._generate_n_mutations(depth=depth, path=path):#每次depth从1开始增加，path都为None；depth就是n
+            #每次depth从1开始增加，path都为None；depth表示一个request中的多少个item会进行变异
+            # _generate_n_mutations 会从root节点开始按深度优先搜索的所有path，路径从短到长，针对每个path的最后一个request，都会进行depth的item变异，并返回拼接的结果
+            for m in self._generate_n_mutations(depth=depth, path=path):
                 valid_case_found_at_this_depth = True
                 yield m # 返回一个迭代器，该迭代器会深度优先搜索所有边，针对每个depth,变异depth次,将path和变异的结果封装成MutationContext进行迭代返回
-            if not valid_case_found_at_this_depth:
+            if not valid_case_found_at_this_depth: # 如果_generate_n_mutations没有返回任何可迭代数据，那么valid_case_found_at_this_depth为False,也就是退出While
                 break
-            depth += 1
+            depth += 1 # 每次迭代深度加1  后续使用这个depth 从叶子节点往前变异，最多depth个item变异
 
     def _generate_n_mutations(self, depth, path):
         """Yield MutationContext with n mutations per message over all messages."""
-        for path in self._iterate_protocol_message_paths(path=path): # 返回深度优先搜索遍历的所有边
-            for m in self._generate_n_mutations_for_path(path, depth=depth):# 针对每条path，进行depth次变异
-                yield m # 返回MutationContext
+        for path in self._iterate_protocol_message_paths(path=path): # path=None时默认返回从root节点开始按深度优先搜索的所有path，路径从短到长
+            for m in self._generate_n_mutations_for_path(path, depth=depth):# 针对每条path的最后一个节点，进行depth次item变异
+                yield m # 返回MutationContext，个人理解就是每个request都对应一个（多个）MutationContext，因为一个request，其message_path可能不一样（多条路径到达request），mutaions在depth相同时应该相同
 
-    # 基于path从叶子节点往前depth个节点进行变异，每个Request节点单独变异，然后形成笛卡尔积；返回的迭代器基于这个笛卡尔积，返回MutationContext
     # 每个MutationContext包含path及相关的变异节点信息
     def _generate_n_mutations_for_path(self, path, depth):
         """Yield MutationContext with n mutations for a specific message.
@@ -1481,6 +1490,7 @@ class Session(pgraph.Graph):
         for mutations in self._generate_n_mutations_for_path_recursive(path, depth=depth):
             if not self._mutations_contain_duplicate(mutations):
                 self.total_mutant_index += 1
+                # MutationContext一次会包含这次变异的路径信息以及request下item.qualified_name构成的mutations字典
                 yield MutationContext(message_path=path, mutations={n.qualified_name: n for n in mutations})# 记录了路径信息(顺序)和变异信息（iter转dict）
 
     def _generate_n_mutations_for_path_recursive(self, path, depth, skip_elements=None):# 从叶子节点往前变异，最多depth个节点变异，目前来看总数为笛卡尔积
@@ -1491,11 +1501,17 @@ class Session(pgraph.Graph):
             return
         new_skip = skip_elements.copy() # 第一次默认为空
         for mutations in self._generate_mutations_for_request(path=path, skip_elements=skip_elements):# 对于path中最后一个节点进行变异
-            new_skip.update(m.qualified_name for m in mutations) # 使用mutation的qualified_name进行集合的union操作
-            for ms in self._generate_n_mutations_for_path_recursive(path, depth=depth - 1, skip_elements=new_skip):# depth-1,再次递归变异倒数第二个节点
-                yield mutations + ms # 返回的是从叶子节点往前的变异序列迭代器，从叶子节点往前深度最多depth（后续使用中iter转dict，说明顺序不重要）
+            new_skip.update(m.qualified_name for m in mutations) # 使用mutation的qualified_name进行集合的union操作，实际效果就像去重复，之后的再次递归变异会跳过这些elements
+            for ms in self._generate_n_mutations_for_path_recursive(path, depth=depth - 1, skip_elements=new_skip):# depth-1,再次递归变异，但是skip_elements多了一个
+                yield mutations + ms # 返回的是从叶子节点的变异，最多从叶子节点中变异depth个元素 刚好从前往后
 
-    def _iterate_protocol_message_paths(self, path=None):# 返回按深度优先搜索的所有path
+    # path=None时默认返回从root节点开始按深度优先搜索的所有path （不同request之间构成的路径）
+    # 如果session中root -connect>  A   -connect>   B   -connect>    C
+    # root->A
+    # root->A->B
+    # root->A->B->C
+    # 会得到3条路径
+    def _iterate_protocol_message_paths(self, path=None):
         """
         Iterates over protocol and yields a path (list of Connection) leading to a given message).
 
@@ -1538,28 +1554,29 @@ class Session(pgraph.Graph):
             # given nodes we don't want any ambiguity.
             path.append(edge)
 
-            message_path = self._message_path_to_str(path)
-            logging.debug("fuzzing: {0}".format(message_path))
-            self.fuzz_node = self.nodes[path[-1].dst]
+            message_path = self._message_path_to_str(path) # 将path 按照 -> 拼接成字符串
+            logging.debug("fuzzing: {0}".format(message_path)) 
+            self.fuzz_node = self.nodes[path[-1].dst] # 当前edge的dst节点
 
-            yield path # 表示path路径可以不必完整走到叶子节点，就能提前返回
+            yield path # 表示path路径可以不必完整走到叶子节点，就能提前返回，这种就算一种要fuzz的情况
 
             # recursively fuzz the remainder of the nodes in the session graph.
             for x in self._iterate_protocol_message_paths_recursive(self.fuzz_node, path):#递归方式终究会走到叶子节点
                 yield x
 
         # finished with the last node on the path, pop it off the path stack.
-        if path:
+        if path: # 这里的pop就是为了让前面for循环中的path 在递归时路径平衡
             path.pop()
 
-    def _mutations_contain_duplicate(self, mutations):
+    def _mutations_contain_duplicate(self, mutations): # 不允许出现重复的qualified_name 或者是存在A.B 在 A.B.C 中这种情形
         names = [m.qualified_name for m in mutations]
         for name1, name2 in itertools.combinations(names, r=2):
             if name1 in name2 or name2 in name1:
                 return True
         return False
 
-    def _generate_mutations_for_request(self, path, skip_elements=None):# 对于path中的最后一个Request节点进行变异的迭代器
+    # 对于path中的最后一个Request节点进行变异 通过控制skip_elements来跳过对于一些item的变异
+    def _generate_mutations_for_request(self, path, skip_elements=None):
         """Yield each mutation for a specific message (the last message in path).
 
         Args:
@@ -1571,18 +1588,23 @@ class Session(pgraph.Graph):
         """
         if skip_elements is None:
             skip_elements = []
-        self.fuzz_node = self.nodes[path[-1].dst] # 仅针对最后一个节点进行变异
+        self.fuzz_node = self.nodes[path[-1].dst] # 仅针对最后一个request节点进行变异
         self.mutant_index = 0
         # fuzz_node一般是Request;mutaions最终应该是一次请求中的某个primitive的变异，mutation包含qualified_name，在render时会被使用构建变异数据
         # 由于在上层函数中最终形成了笛卡尔积的效果，从而能够覆盖所有的组合，只不过由于笛卡尔积的原因，变异的数量比较大，而且基于网络，速度会较慢
+        # 对于request来说，通过skip_elements来跳过一些fuzz_node【request】中的一些item
+        # request.get_mutations会在迭代不同的item时，设置 self.request.mutant = item， 每次这里返回的mutaitons是一个item的一个Mutation结果
+        # 但遍历完所有的item后，mutations就获取了所有的结果，可以通过self.fuzz_node.mutant 也能知道当前变异的是哪一个item
         for mutations in self.fuzz_node.get_mutations(skip_elements=skip_elements):
             self.mutant_index += 1
             yield mutations
 
-            if self._skip_current_node_after_current_test_case:# 像是停止所有的变异
-                self._skip_current_node_after_current_test_case = False
+            if self._skip_current_node_after_current_test_case:# 像是停止当前request所有item的变异
+                self._skip_current_node_after_current_test_case = False 
                 break
-            elif self._skip_current_element_after_current_test_case: # 像是停止当前节点的变异
+            elif self._skip_current_element_after_current_test_case: # 像是停止当前request节点的正在进行item变异
+                # self.request.mutant = item 是request在变异时的一个正在进行变异的子元素，也就是request中的string这些
+                # stop_mutations默认会让_halt_mutations为True,也就是会在get_mutations时让一个item停止变异
                 self.fuzz_node.mutant.stop_mutations()
                 self._skip_current_element_after_current_test_case = False
                 continue
@@ -1651,6 +1673,7 @@ class Session(pgraph.Graph):
 
         try:
             self._open_connection_keep_trying(target)
+            # 执行monitor的pre_send方法
             self._pre_send(target)
 
             for e in mutation_context.message_path[:-1]:
@@ -1663,6 +1686,7 @@ class Session(pgraph.Graph):
                 mutation_context.protocol_session = protocol_session
                 self._fuzz_data_logger.open_test_step("Prep Node '{0}'".format(node.name))
                 callback_data = self._callback_current_node(node=node, edge=e, test_case_context=protocol_session)
+                # 每次的mutation_context都相同
                 self.transmit_normal(target, node, e, callback_data=callback_data, mutation_context=mutation_context)
 
             prev_node = self.nodes[mutation_context.message_path[-1].src]
@@ -1684,7 +1708,7 @@ class Session(pgraph.Graph):
                 callback_data=callback_data,
                 mutation_context=mutation_context,
             )
-
+            # 执行monitor的post_send相关操作返回结果
             self._check_for_passively_detected_failures(target)
             if not self._reuse_target_connection:
                 target.close()
@@ -1751,6 +1775,7 @@ class Session(pgraph.Graph):
             for e in mutation_context.message_path[:-1]:
                 prev_node = self.nodes[e.src]
                 node = self.nodes[e.dst]
+                # 主要封装前后两个节点  Context for test case-scoped data
                 protocol_session = ProtocolSession(
                     previous_message=prev_node,
                     current_message=node,
@@ -1758,6 +1783,7 @@ class Session(pgraph.Graph):
                 mutation_context.protocol_session = protocol_session
                 callback_data = self._callback_current_node(node=node, edge=e, test_case_context=protocol_session) # 调用edge上的callback
                 self._fuzz_data_logger.open_test_step("Transmit Prep Node '{0}'".format(node.name))
+                # 每次的mutation_context都相同
                 self.transmit_normal(target, node, e, callback_data=callback_data, mutation_context=mutation_context) # 发送node的“变异”数据
 
             prev_node = self.nodes[mutation_context.message_path[-1].src]
@@ -1777,9 +1803,9 @@ class Session(pgraph.Graph):
                 mutation_context.message_path[-1],
                 callback_data=callback_data,
                 mutation_context=mutation_context,
-            ) # 感觉和transmit_normal没什么区别
+            ) # 感觉和transmit_normal没什么区别，虽然内部直接使用的是self.fuzz_node而不是参数中的node
 
-            self._check_for_passively_detected_failures(target=target)# 通过monitor获取crash信息
+            self._check_for_passively_detected_failures(target=target)# 通过monitor执行post_send 并获取crash信息
             if not self._reuse_target_connection:
                 target.close()
 
